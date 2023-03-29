@@ -3,25 +3,9 @@ import pandas as pd
 from rdkit import Chem
 from rdkit.Chem import Descriptors
 
-from papyrus_scripts.download import download_papyrus
 from papyrus_scripts.reader import read_papyrus, read_protein_set
 from papyrus_scripts.preprocess import keep_quality, keep_type, keep_protein_class
 from papyrus_scripts.preprocess import consume_chunks
-
-def load_papyrus_data(papyrus_path : str):
-
-    """
-    Download all activity datapoints from Papyrus v05.5
-    
-    Parameters
-    ----------
-    papyrus_path : str
-        Path to Papyrus data
-    """
-
-    print('Downloading Papyrus data...')
-
-    download_papyrus(version='05.5', only_pp=False, descriptors=False, outdir=papyrus_path)
 
 def retrive_kinase_data_from_Papyrus(source_path : str):
 
@@ -40,6 +24,7 @@ def retrive_kinase_data_from_Papyrus(source_path : str):
     """
 
     print('Retrive kinase data from Papyrus...')
+    print(source_path)
 
     mol_data = read_papyrus(is3d=False, chunksize=100000, source_path=source_path)
     protein_data = read_protein_set(source_path=source_path)

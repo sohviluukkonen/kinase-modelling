@@ -1,5 +1,7 @@
+from papyrus_scripts.download import download_papyrus
+
 from src.utils import mkdirs
-from src.data import load_papyrus_data, retrive_kinase_data_from_Papyrus, filter_data, pivot_Papyrus_data
+from src.data import retrive_kinase_data_from_Papyrus, filter_data, pivot_Papyrus_data
 from src.split import random_global_equilibrated_random_split, \
     dissimilaritydrive_global_balanced_cluster_split, compute_intersubset_Tanimoto_distance
 
@@ -14,13 +16,17 @@ if __name__ == '__main__':
     """
     # Load Papyrus data
     mkdirs('data')
-    load_papyrus_data(papyrus_path='data')
+    print('Downloading Papyrus data...')
+    download_papyrus(version='05.5', only_pp=False, descriptors=False, structures=False, outdir='data')
     
     # Retrieve, filter & pivot data
-    all_kinase_data = retrive_kinase_data_from_Papyrus(source_path='data')
+    all_kinase_data = retrive_kinase_data_from_Papyrus(source_path='data/papyrus/05.5')
     kinase200, kinase1000 = filter_data(all_kinase_data)
+    kinase200.to_csv('kinase200.csv.gz', index=False)
+
     kinase200 = pivot_Papyrus_data(kinase200)
     kinase1000 = pivot_Papyrus_data(kinase1000)
+
 
     # Split data
     targets_kinase200 = kinase200.columns[2:].tolist()
