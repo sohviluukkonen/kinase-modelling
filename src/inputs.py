@@ -46,7 +46,6 @@ def create_imputed_inputs(in_file : str, out_path : str, mode : str = 'RF', mode
         for target in targets:
             inan = data[target].isna() 
             data.loc[inan, target] = preds.loc[inan, target]
-    print(data.head())
 
     for subset in ['train', 'valid', 'test']:
         df = data[data.Subset == subset].drop(['InChIKey', 'Split', 'Subset', 'MinInterSetTd'], axis=1, errors='ignore')
