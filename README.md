@@ -10,6 +10,7 @@ The kinases sets were obtained with `dataset_creation.py`
 1. retriving kinase data from Papyrus
 2. filtering out kinases with less than 200 (kinase200) or 1000 (kinase1000) data points
 3. two balanced splits without data leakage (random- and cluster-based) were applied to both sets
+4. creates train, validation, test set input files for model training and evaluation
 
 The four kinase benchmark datasets constructed in this work are at `data/datasets`.
 
@@ -19,17 +20,13 @@ To validate our implementation of the pQSAR2.0 model from Martin, et al.'s [Prof
 
 ## Modelling
 
-### Input preprocessing
-
-Input data files for the models were created from the new kinase and the pQSAR datasets with `data_preprocessing.py`
-
 ### Training and testing
 
 The training and testing of all models (except pQSAR) for all dataset and splits were run with `run_models.py`. The pQSAR models were separetaly run with `run_pQSAR.py`
 
 ### Hyperparameter optimisation
 
-The hyperparameter optimisation of the Random Forest and Xgboost models is done on the fly in `run_models.py`. For the D-MPNN models, it was done separately once with `run_optuna.py`.
+The hyperparameter optimisation of the Random Forest and Xgboost models is done on the fly in `run_models.py`. For the D-MPNN models, it was done separately once with `run_cp_opt.py`.
 
 ## Analysis
 
