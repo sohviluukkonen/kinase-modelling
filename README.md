@@ -1,6 +1,8 @@
 # Large-scale modelling of sparse kinase activity data 
 
-This repository includes the data and the scripts to create the large-scale kinase dataset and the accompaning modelling presented in [Large-scale modelling of sparse kinase activity data](link_to_preprint/paper).
+This repository includes the data and the scripts to create the large-scale kinase dataset and the accompaning modelling presented in [Large-scale modelling of sparse kinase activity data](https://chemrxiv.org/engage/chemrxiv/article-details/63d29b391fb2a8b6fae1da11).
+
+WARNING: (18/04/2023) The scripts and results in this repository do not macth at 100% with the preprint. A revised version of the manuscript will be available soon.
 
 ## Data
 
@@ -31,4 +33,3 @@ The hyperparameter optimisation of the Random Forest and Xgboost models is done 
 ## Analysis
 
 The `Analysis.ipynb` notebook contains all steps to reproduce figures and analysis from the paper.
-
