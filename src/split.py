@@ -1,36 +1,22 @@
 #General modules
-import sys
 import tqdm
 import pandas as pd
 import numpy as np
-import argparse
-from collections import defaultdict
+
 from pulp import *
-from multiprocessing import cpu_count
+from typing import List
+from collections import defaultdict
 
 #Chemistry modules
 from rdkit import Chem, DataStructs
 from rdkit.Chem import AllChem
-from rdkit.Chem import PandasTools
+from rdkit.Chem import rdMolDescriptors
 from rdkit.SimDivFilters import rdSimDivPickers
 
 #ML modules
-from sklearn.model_selection import KFold
 from sklearn.model_selection import train_test_split
+from sklearn.metrics import pairwise_distances
 
-from .utils import compute_fps
-
-def parse_args():
-    parsera = argparse.ArgumentParser(description='Run the GLPG model workflow')
-    parsera.add_argument("-datafile", help="the datafile with affinity values to load, pivotted format with smiles as index and targets as columns")
-    # parsera.add_argument("-splitdir", help = "folder to store splits in")
-    parsera.add_argument("-output", help = "output prefix")
-    parsera.add_argument("-splittype", help = "choose splittype, options: random, time and scaffold") 
-    parsera.add_argument("-nsplits", help = "number of splits")
-    parsera.add_argument("-seed", help = "(random split) integer that sets the randomness of the split for reproducibility")
-    parsera.add_argument("-threads", help = "(scaffold split) number of threads used for making the scaffold split")
-    global args
-    args=parsera.parse_args()
 
 #Function for assigning datapoints to clusters for the scaffold-based split
 def assignPointsToClusters(picks,fps):
@@ -254,16 +240,18 @@ def random_global_equilibrated_random_split(data, targets, seed):
     -------
     pd.DataFrame
         Dataframe containing the data with a column 'Subset' containing the split"""
+    
+    print('Create RGES split...')
 
     ordered_targets = order_targets_per_number_of_datapoints(data, targets)
     
     split_data = data.copy()
     split_data['Subset'] = 0
-    
-    for target in ordered_targets:
+
+    for target in tqdm.tqdm(ordered_targets, desc='Targets'):
         index = split_data[~split_data[target].isna()].index.tolist()
-        train, test = train_test_split(index, test_size=0.1, random_state=seed)
-        train, valid = train_test_split(train, test_size=0.11, random_state=seed)
+        train, test = train_test_split(index, test_size=1/10, random_state=seed)
+        train, valid = train_test_split(train, test_size=1/9, random_state=seed)
         for i in train : split_data.loc[i, 'Subset'] = 'train'
         for i in valid : split_data.loc[i, 'Subset'] = 'valid'
         for i in test : split_data.loc[i, 'Subset'] = 'test'
@@ -295,61 +283,90 @@ def dissimilaritydrive_global_balanced_cluster_split(data, targets, threads=8, s
     pd.DataFrame
         Dataframe containing the data with a column 'Subset' containing the split
     """
+
+    print('Create DGBC split...')
     
     # Assign compounds to clusters
-    split_data = data.copy()
-    PandasTools.AddMoleculeColumnToFrame(split_data, "SMILES", 'Molecule')
-    FP = [Chem.rdMolDescriptors.GetMorganFingerprintAsBitVect(mol,3,2048) for mol in split_data['Molecule']]
-    lp = rdSimDivPickers.LeaderPicker()
-    thresh = 0.736 # <- minimum distance between cluster centroids
-    picks = lp.LazyBitVectorPick(FP,len(FP),thresh)
-    clusters = assignPointsToClusters(picks,FP)
-    cluster_size = [len(j) for i,j in clusters.items()]
+    split_data = data.copy().reset_index(drop=True)
+
+    # Compute fingerprints
+    fps = [rdMolDescriptors.GetMorganFingerprintAsBitVect(Chem.MolFromSmiles(s), 3, 2048) for s in split_data['SMILES']]
+
+    # Get the cluster centers
+    print("Pick cluster centers with Sayle's algorithm...")
+    lead_picker = rdSimDivPickers.LeaderPicker()
+    similarity_threshold = 0.736
+    centroids_indices = lead_picker.LazyBitVectorPick(fps, len(fps), similarity_threshold)
+    clusters = { i: [centroid_idx] for i, centroid_idx in enumerate(centroids_indices) }
+
+    # Calculate the Tanimoto similarities between the cluster centers 
+    # and the other points
+    print('Calculating Tanimoto similarities between cluster centers and other points...')
+    sims = np.zeros((len(centroids_indices),len(fps)))
+    for i, centroid_idx in enumerate(centroids_indices):
+        sims[i,:] = DataStructs.BulkTanimotoSimilarity(fps[centroid_idx],fps)
+        # sims[i,i] = 0
+
+    # Assign the points to clusters
+    print('Assigning points to clusters...')
+    best_cluster = np.argmax(sims,axis=0) # shape of best_cluster is (len(fps),)
+    for i, idx in enumerate(best_cluster):
+        if i not in centroids_indices:
+            clusters[idx].append(i)
     
-    # Compute the amount of data per target per cluster
-    # Shape of taks_vs_clusters_array is (n_targets+1, n_clusters)
-    tasks_vs_clusters_list = [cluster_size] # Add cluster size to the list
-    for target in targets:  
-        amount_cluster_target = []
-        for i, j in clusters.items():
-            cluster = data.iloc[j] 
-            cluster_target = cluster[target] 
-            amount_cluster_target.append(cluster_target.dropna().size) 
-        tasks_vs_clusters_list.append(amount_cluster_target)
-    tasks_vs_clusters_array = np.array(tasks_vs_clusters_list)
+    # # Compute the amount of data per target per cluster
+    # # Shape of taks_vs_clusters_array is (n_targets+1, n_clusters)
+    target_vs_clusters = np.zeros((len(targets)+1, len(clusters)))
+    target_vs_clusters[0,:] = [ len(cluster) for cluster in clusters.values() ]
+
+    for i, target in enumerate(targets):
+        for j, indices_per_cluster in clusters.items():
+            data_per_cluster = split_data.iloc[indices_per_cluster]
+            target_vs_clusters[i+1,j] = data_per_cluster[target].dropna().shape[0]
+
+    print(target_vs_clusters.shape, len(clusters))
 
     # Balance the data per target per cluster using PuLP and return the mapping of clusters to subsets (train, validation, test)
-    mapping = balance_data_from_tasks_vs_clusters_array_pulp(tasks_vs_clusters_array,
+    mapping = balance_data_from_tasks_vs_clusters_array_pulp(target_vs_clusters,
                                             sizes = sizes,
                                             equal_weight_perc_compounds_as_tasks = False,
                                             relative_gap = 0,
-                                            time_limit_seconds = 60*30,
-                                            max_N_threads = threads)
-    grouped_clusters = pd.DataFrame({"group": mapping,
-                                    "cluster": [j for i, j in clusters.items()]})
-    del split_data["Molecule"]
-    
-    split_data['Split'] = 'Scaffold'
-    split_data["Subset"] = 0
-    for i in grouped_clusters["cluster"].loc[grouped_clusters["group"]==1]: split_data.loc[i,['Subset']] = 'train'
-    for i in grouped_clusters["cluster"].loc[grouped_clusters["group"]==2]: split_data.loc[i,['Subset']] = 'valid'
-    for i in grouped_clusters["cluster"].loc[grouped_clusters["group"]==3]: split_data.loc[i,['Subset']] = 'test'
+                                            time_limit_seconds = 60 * 60,
+                                            max_N_threads = threads,
+                                            )
+
+    for i, idx in clusters.items(): 
+        if mapping[i] == 1 :
+            split_data.loc[idx, 'Subset'] = 'train'
+        elif mapping[i] == 2 :
+            split_data.loc[idx, 'Subset'] = 'valid'
+        elif mapping[i] == 3 :
+            split_data.loc[idx, 'Subset'] = 'test'
     
     return split_data
-    
-def tanimoto_distance_matrix(fp_list):
-    """Calculate distance matrix for fingerprint list"""
-    dissimilarity_matrix = []
-    # Notice how we are deliberately skipping the first and last items in the list
-    # because we don't need to compare them against themselves
-    for i in tqdm.tqdm(range(1, len(fp_list)), desc='Calculating distance matrix'):
-        # Compare the current fingerprint against all the previous ones in the list
-        similarities = DataStructs.BulkTanimotoSimilarity(fp_list[i], fp_list[:i])
-        # Since we need a distance matrix, calculate 1-x for every element in similarity matrix
-        dissimilarity_matrix.extend([1 - x for x in similarities])
-    return dissimilarity_matrix
 
-def compute_intersubset_Tanimoto_distance(df):
+def print_balance_metrics(data : pd.DataFrame, targets : List[str]):
+    """ 
+    Print the balance metrics for the given subsets and targets.
+    """
+        
+    txt = 'Overall balance:'
+    for subset in sorted(data['Subset'].unique()):
+        n = len(data[data['Subset'] == subset])
+        frac = n/ len(data)
+        txt += f' {subset}: {n} ({frac:05.2%})'
+    print(txt)
+    
+    for target in targets:
+        txt = f'{target} balance:'
+        df = data.dropna(subset=[target])
+        for subset in sorted(data['Subset'].unique()):
+            n = len(df[df['Subset'] == subset])
+            frac = n / len(df)
+            txt += f' {subset}: {n} ({frac:05.2%})'
+        print(txt)
+    
+def compute_intersubset_Tanimoto_distance(df, n_jobs=1):
     """
     Compute the minimum Tanimoto distance per compound to the compounds in the other subsets.
     
@@ -357,30 +374,35 @@ def compute_intersubset_Tanimoto_distance(df):
     ----------
     data : pd.DataFrame
         Dataframe containing the data with a column 'Subset' containing the split
+    smiles_column : str, optional
+        Name of the column containing the SMILES, by default 'SMILES'
     
     Returns
     -------
     pd.DataFrame
         Dataframe containing the data with a column 'MinInterSetTd' containing the minimum Tanimoto distance
+
     """
-    n = len(df)
+
+    df.reset_index(drop=True, inplace=True)
 
     # Compute Morgan Fingerprints
-    fps = [AllChem.GetMorganFingerprintAsBitVect(Chem.MolFromSmiles(smiles), 3, nBits=2048) for smiles in tqdm.tqdm(df.SMILES, desc='Computing Morgan Fingerprints from SMILES')]
-    
-    # Compute Tanimoto distance matrix
-    dist_matrix_flatten = tanimoto_distance_matrix(fps)
+    fps = [AllChem.GetMorganFingerprintAsBitVect(Chem.MolFromSmiles(s), 3, nBits=2048) for s in df.SMILES]
 
-    # Create symmetric distance matrix
-    dist_matrix = np.zeros((n, n))
-    dist_matrix[np.triu_indices(n, k=1)] = dist_matrix_flatten
-    dist_matrix += dist_matrix.T
+    # Compute pairwise Tanimoto distances between all compounds
+    dists = pairwise_distances(np.array(fps), metric='jaccard', n_jobs=n_jobs)
 
-    # Compute minimum distance per compound to the compounds in the other subsets
-    for j in ['train', 'valid', 'test']:
-        ref_idx = df[df.Subset == j].index.tolist()
-        other_idx = df[df.Subset != j].index.tolist()
-        for i in tqdm.tqdm(ref_idx, total=len(ref_idx), desc='Computing minimum interset Tanimoto distance for mols in subset {}'.format(j)) :
-            df.loc[i, 'MinInterSetTd'] = min(dist_matrix[i, other_idx])
-    
+    for idx, row in tqdm.tqdm(df.iterrows(), total=df.shape[0], desc='Computing minimum Tanimoto distance'):
+        subset = row['Subset']
+        other_subset_indices = df[df['Subset'] != subset].index.values
+        min_dist = min([dists[idx, i] for i in other_subset_indices])
+        df.loc[idx, 'MinInterSetTd'] = min_dist
+
+    # Print average and std  of minimum distances per subset
+    txt = 'Average and std of minimum Tanimoto distance per subset:'
+    for subset in sorted(df['Subset'].unique()):
+        dist = df[df['Subset'] == subset]['MinInterSetTd'].to_numpy()
+        txt += f' {subset}: {np.mean(dist):.2f} ({np.std(dist):.2f})'
+    print(txt)
+
     return df
