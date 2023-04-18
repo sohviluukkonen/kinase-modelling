@@ -73,18 +73,16 @@ def create_input_files_from_pQSARdatasets():
         # pQSAR2.0 Predicted data
         train_pred = df.drop(['ID', 'pIC50_exp'], axis=1).pivot(index='SMILES', columns='AssayID', values='pIC50_pred').reset_index()
         train_pred.to_csv(f'{output_dir}/pred_{subset}.csv', index=False)
-        print(len(df), len(train_exp), len(train_pred))
 
         # Test data
         subset = 'test'
-        df = pd.read_csv(f'{input_prefix}_{subset}.csv').rename(columns={'smiles': 'SMILES'})
+        df = pd.read_csv(f'{input_prefix}_{subset}.csv.gz').rename(columns={'smiles': 'SMILES'})
         # Experimental data
         test_exp = df.drop(['ID', 'pIC50_pred'], axis=1).pivot(index='SMILES', columns='AssayID', values='pIC50_exp').reset_index()
         test_exp.to_csv(f'{output_dir}/exp_{subset}.csv', index=False)
         # pQSAR2.0 Predicted data
         test_pred = df.drop(['ID', 'pIC50_exp'], axis=1).pivot(index='SMILES', columns='AssayID', values='pIC50_pred').reset_index()
         test_pred.to_csv(f'{output_dir}/pred_{subset}.csv', index=False)
-        print(len(df), len(test_exp), len(test_pred))
 
         # Combine train and test data
         exp = pd.concat([train_exp, test_exp], axis=0)

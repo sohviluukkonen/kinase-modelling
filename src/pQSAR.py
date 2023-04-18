@@ -59,12 +59,11 @@ def train_pQSAR(data_path : str, rf_path : str, model_path : str, subset : str =
         data = data[data.Subset == subset]
     targets = data.drop(['SMILES', 'Subset', 'MinInterSetTd'], errors='ignore', axis=1).columns.tolist()
 
-    for target in tqdm.tqdm(targets, desc='Training pQSAR models'):
-        print('Training pQSAR model for ', target)
-        y_train = data[target].dropna()
-        # Predictions for other kinases from RF models
-        x_train = predict_RF_STs(data.drop(target, axis=1).loc[y_train.index], rf_path).drop('SMILES', axis=1)
+    rf_preds = predict_RF_STs(data_path, rf_path)
 
+    for target in tqdm.tqdm(targets, desc='Training pQSAR models'):
+        y_train = data[target].dropna()
+        x_train = rf_preds.drop(['SMILES',target], axis=1).loc[y_train.index]
         model = train_pls(x_train, y_train)
         joblib.dump(model, f'{model_path}/{target}.joblib')
 
@@ -92,13 +91,13 @@ def predict_pQSAR(data_path: str, rf_path : str , pls_path : str, preds_path : s
         data = data[data.Subset == subset]
     targets = data.drop(['SMILES', 'Subset', 'MinInterSetTd'], errors='ignore', axis=1).columns.tolist()
 
+    rf_preds = predict_RF_STs(data_path, rf_path)
+
     preds = data.copy()
 
     for target in tqdm.tqdm(targets, desc='Predicting with pQSAR models'):
-        print('Predictions with pQSAR model for ', target)
         y_test = data[target].dropna()
-        # Predictions for other kinases from RF models
-        x_test = predict_RF_STs(data.drop(target, axis=1).loc[y_test.index], rf_path).drop('SMILES', axis=1)
+        x_test = rf_preds.drop(['SMILES',target], axis=1).loc[y_test.index]
 
         model = joblib.load(f'{pls_path}/{target}.joblib')
         preds.loc[y_test.index, target] = model.predict(x_test)
@@ -114,9 +113,9 @@ def pQSAR_model_validation():
     """ Validation of pQSAR2.0 model implementation by reproducing results from Martin et al. """
     
     dataset = 'Assays'
-    for split in  ['Random', 'Real']:
+    for split in  ['Random', 'Realistic']:
         
-        data_path = f'Datasets/{dataset}/{split}'
+        data_path = f'ModelInputs/{dataset}/{split}'
         rf_path = f'Models/RF/ST/{dataset}/{split}'
         rf_preds_path = f'Predictions/RF/ST/{dataset}/{split}'
         pls_path = f'Models/pQSAR/MT/{dataset}/{split}'
@@ -143,7 +142,7 @@ def run_pQSAR_model(dataset : str, split : str, data_leakage : str = 'Default'):
         Data leakage strategy, by default 'Default'
     """
     
-    data_path = f'Datasets/{dataset}/{split}/Original'
+    data_path = f'ModelInputs/{dataset}/{split}/Original'
     rf_path = f'Models/RF/ST/{dataset}/{split}/Default'
     pls_path = f'Models/pQSAR/MT/{dataset}/{split}/{data_leakage}'
     pls_preds_path = f'Predictions/pQSAR/MT/{dataset}/{split}/{data_leakage}'
