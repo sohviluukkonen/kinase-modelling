@@ -4,9 +4,9 @@ import optuna
 
 from src.chemprop import train_chemprop_MT
 
-def fetch_val_rmse(log):
+def fetch_val_r2(log):
     """
-    Fetch validation RMSE from Chemprop log file.
+    Fetch validation R2 from Chemprop log file.
 
     Parameters
     ----------
@@ -20,13 +20,13 @@ def fetch_val_rmse(log):
     """
     with open(log) as myfile:
         for row in myfile:
-            if 'Ensemble test rmse' in row:
+            if 'Ensemble test r2' in row:
                 row = row.split(" ")
                 idx = row.index('=')
                 idx = idx+1
-                rmse_val = row[idx]
+                r2_val = row[idx]
     myfile.close()
-    return float(rmse_val)
+    return float(r2_val)
 
 
 def objective(trial):
@@ -72,16 +72,18 @@ def objective(trial):
     targets = ['P00533_WT', 'P04626_WT', 'P06239_WT', 'Q5S007_WT', 'O75116_WT']
     kwargs['target_columns'] = ' '.join(targets)
 
+    kwargs['gpu'] = 2
+
     print(kwargs)
 
-    data_path = 'ModelInputs/kinase1000/BalancedCluster/Original/train.csv'
-    valid_path = 'ModelInputs/kinase1000/BalancedCluster/Original/valid.csv'
-    test_path = 'ModelInputs/kinase1000/BalancedCluster/Original/valid.csv'
+    data_path = 'ModelInputs/kinase1000/DGBC/Original/train.csv'
+    valid_path = 'ModelInputs/kinase1000/DGBC/Original/valid.csv'
+    test_path = 'ModelInputs/kinase1000/DGBC/Original/valid.csv'
     model_path = f'ChempropHyperOpt/params_{i:03d}'
     
     train_chemprop_MT(data_path, valid_path, test_path, model_path, **kwargs)
     log = f'ChempropHyperOpt/params_000/quiet.log'
-    metric = fetch_val_rmse(log)
+    metric = fetch_val_r2(log)
     os.system(f'rm -rf {model_path}/fold_0')
 
     return metric
@@ -92,6 +94,6 @@ if __name__ == '__main__':
     Run hyperparameter optimization of chemprop multi-taks model using Optuna.
     """
 
-    study = optuna.create_study(direction='minimize')
+    study = optuna.create_study(direction='maximize')
     study.optimize(objective, n_trials=200)
     print(study.best_params)

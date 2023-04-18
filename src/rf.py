@@ -68,7 +68,7 @@ def train_optim_RF_STs(
         splits = PredefinedSplit(test_fold = data.iloc[y.index].split_index)
 
         model = RandomForestRegressor(random_state = seed, n_jobs=n_jobs)
-        rdnSearch = RandomizedSearchCV(model, RF_hyperparams(), n_iter=n_iter, cv=splits, n_jobs=n_jobs, scoring=make_scorer(r2_score), random_state=seed)
+        rdnSearch = RandomizedSearchCV(model, RF_hyperparams(), n_iter=n_iter, cv=splits, n_jobs=1, scoring=make_scorer(r2_score), random_state=seed)
         rdnSearch.fit(X, y)
         joblib.dump(rdnSearch.best_estimator_, f'{model_path}/{target}.joblib')
         print('Best parameters for', target, rdnSearch.best_params_)

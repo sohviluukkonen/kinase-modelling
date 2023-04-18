@@ -1,5 +1,5 @@
 import os
-import tqdm
+import tqdm.auto as tqdm
 import joblib
 import pandas as pd
 
@@ -58,12 +58,17 @@ def train_optim_XGB_STs(
     val['split_index'] = 0
 
     data = pd.concat([data, val], axis=0, ignore_index=True)
-    targets = data.drop(['SMILES', 'InChIKey', 'Split', 'Subset', 'MinInterSetTd', 'set_index'], axis=1, errors='ignore').columns.tolist()
+    targets = data.drop(['SMILES', 'InChIKey', 'Split', 'Subset', 'MinInterSetTd', 'split_index'], axis=1, errors='ignore').columns.tolist()
 
-    for target in tqdm.tqdm(targets, desc='Training Random Forests with optimisation'):
+    fps = compute_fps(data)
+
+    for target in tqdm.tqdm(targets, desc='Training XGB models'):
+
+        if os.path.exists(f'{model_path}/{target}.joblib'):
+            continue
         
         y = data[target].dropna()
-        X = compute_fps(data.iloc[y.index])
+        X = fps.iloc[y.index]
         splits = PredefinedSplit(test_fold = data.iloc[y.index].split_index)
 
         model = xgb.XGBRegressor(random_state = seed, gpu_id=0, tree_method='gpu_hist')

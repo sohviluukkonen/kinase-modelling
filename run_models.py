@@ -7,6 +7,7 @@ import pandas as pd
 from src.chemprop import train_chemprop_MT, train_chemprop_STs, predict_chemprop_MT, predict_chemprop_STs
 from src.rf import train_RF_STs, predict_RF_STs, train_optim_RF_STs
 from src.xgb import train_XGB_STs, predict_XGB_STs, train_optim_XGB_STs
+from src.pyboost import train_PB_MT, predict_PB_MT, train_optim_PB_MT
 from src.utils import mkdirs
 from src.inputs import create_imputed_inputs
 
@@ -94,34 +95,39 @@ def run_model(model :str,
     # Chemprop
     elif model.startswith('CP'):
         if mode == 'ST':
-            train_chemprop_STs(f'{data_path}/train.csv', f'{data_path}/valid.csv', f'{data_path}/test.csv', model_path, param_path)
+            # train_chemprop_STs(f'{data_path}/train.csv', f'{data_path}/valid.csv', f'{data_path}/test.csv', model_path, param_path)
             predict_chemprop_STs(f'{data_path}/test.csv', model_path, preds_path)   
         else:
             train_chemprop_MT(f'{data_path}/train.csv', f'{data_path}/valid.csv', f'{data_path}/test.csv', model_path, param_path)
             predict_chemprop_MT(f'{data_path}/test.csv', model_path, preds_path)   
+
+    # PyBoost
+    elif model == 'PB':
+        if mode == 'ST' or imputation != None:
+            sys.exit('For PyBoost, only MT model is implemented')
+        elif params == 'Default':
+            train_PB_MT(f'{data_path}/train.csv', model_path)
+            predict_PB_MT(f'{data_path}/test.csv', model_path, preds_path)
+        else:
+            train_optim_PB_MT(f'{data_path}/train.csv', f'{data_path}/valid.csv', model_path)
+            predict_PB_MT(f'{data_path}/test.csv', model_path, preds_path)
 
 if __name__ == '__main__':
 
     for dataset in ['kinase1000', 'kinase200']:
         for split in  ['RGES', 'DGBC']:
 
-            # With default parameters
-            
-            # Single-task Random Forest
+            # # With default parameters            
             run_model('RF', dataset, split, 'ST')
-            # Single-task XGBoost
             run_model('XGB', dataset, split, 'ST')
-            # Single-task Chemprop
+            run_model('PB', dataset, split, 'MT')
             run_model('CP', dataset, split, 'ST')
-            # Multi-task Chemprop
             run_model('CP', dataset, split, 'MT')
 
-            # Multi-task Chemprop - Mean imputed
-            create_imputed_inputs(f'Preprocessing/{dataset}_{split}.csv', f'Datasets/{dataset}/{split}/ImputedMean', 'Mean')
+            create_imputed_inputs(f'data/datasets/{dataset}_{split}.csv.gz', f'ModelInputs/{dataset}/{split}/ImputedMean', 'Mean')
             run_model('CP', dataset, split, 'MT', imputation='Mean')
 
-            # Multi-task Chemprop - RF imputed
-            create_imputed_inputs(f'Preprocessing/{dataset}_{split}.csv', f'Datasets/{dataset}/{split}/ImputedRF',
+            create_imputed_inputs(f'data/datasets/{dataset}_{split}.csv.gz', f'ModelInputs/{dataset}/{split}/ImputedRF',
                 'RF', f'Models/RF/ST/{dataset}/{split}/Default/'
                 )
             run_model('CP', dataset, split, 'MT', imputation='RF')
@@ -130,7 +136,12 @@ if __name__ == '__main__':
             if dataset == 'kinase200':
                 run_model('RF', dataset, split, 'ST', 'HyperOpt')
                 run_model('XGB', dataset, split, 'ST', 'HyperOpt')
-                run_model('CP', dataset, split, 'ST', param_path='chemprop_hyperparams.json')
-                run_model('CP', dataset, split, 'MT', param_path='chemprop_hyperparams.json')
-                run_model('CP', dataset, split, 'MT', param_path='chemprop_hyperparams.json', imputation='Mean')        
-                run_model('CP', dataset, split, 'MT', param_path='chemprop_hyperparams.json', imputation='RF')
+                run_model('PB', dataset, split, 'MT', 'HyperOpt')
+                run_model('CP', dataset, split, 'ST', param_path='cp_params.json')
+                run_model('CP', dataset, split, 'MT', param_path='cp_params.json')
+                run_model('CP', dataset, split, 'MT', param_path='cp_params.json', imputation='Mean')        
+                run_model('CP', dataset, split, 'MT', param_path='cp_params.json', imputation='RF')
+            if dataset == 'kinase1000':
+                run_model('PB', dataset, split, 'MT', 'HyperOpt')
+                run_model('CP', dataset, split, 'MT', param_path='cp_params.json')
+
