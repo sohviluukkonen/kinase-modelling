@@ -1,8 +1,7 @@
 # Large-scale modelling of sparse kinase activity data 
 
-This repository includes the data and the scripts to create the large-scale kinase dataset and the accompaning modelling presented in [Large-scale modelling of sparse kinase activity data](https://chemrxiv.org/engage/chemrxiv/article-details/63d29b391fb2a8b6fae1da11).
+This repository includes the data and the scripts to create the large-scale kinase dataset and the accompaning modelling presented in [Large-scale modelling of sparse kinase activity data](https://doi.org/10.1021/acs.jcim.3c00132).
 
-WARNING: (18/04/2023) The scripts and results in this repository do not macth at 100% with the preprint. A revised version of the manuscript will be available soon.
 
 ## Data
 
